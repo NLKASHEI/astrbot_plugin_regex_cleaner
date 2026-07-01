@@ -6,8 +6,9 @@ astrbot_plugin_regex_cleaner - 正则清理 LLM 输出中的异常格式
   [{text=这是正常的回复内容, type=text}]
   [{text=第一段, type=text}, {text=第二段, type=text}]
 
-本插件通过 @filter.on_llm_response() 钩子拦截 LLM 响应，
-用正则将这些异常格式提取为纯文本。
+本插件通过两种方式处理：
+1. @filter.on_llm_request() — 在 system_prompt 注入指令，从源头阻止 Gemini 输出该格式
+2. @filter.on_llm_response() — 兜底正则清理（万一又漏了）
 """
 
 import re
@@ -27,6 +28,13 @@ _FULL_BLOCK_RE = re.compile(
     re.DOTALL,
 )
 
+# system_prompt 注入的格式禁止指令
+_FORMAT_BAN_PROMPT = (
+    "\n[重要规则] 你的回复必须是纯自然语言文本，"
+    "绝对不要使用 [{text=..., type=text}] 这种格式输出。"
+    "直接输出你想说的话，不要用任何结构化标签包裹。\n"
+)
+
 
 class RegexCleaner(Star):
     def __init__(self, context: Context):
@@ -34,9 +42,21 @@ class RegexCleaner(Star):
         self.enabled = True
         self.clean_count = 0
 
+    # ==================== 源头预防 ====================
+
+    @filter.on_llm_request()
+    async def inject_format_ban(self, event: AstrMessageEvent, req):
+        """在 system_prompt 中注入指令，禁止 Gemini 使用 [{text=..., type=text}] 格式"""
+        if not self.enabled:
+            return
+        if hasattr(req, 'system_prompt') and req.system_prompt:
+            req.system_prompt += _FORMAT_BAN_PROMPT
+
+    # ==================== 兜底清理 ====================
+
     @filter.on_llm_response()
     async def clean_llm_response(self, event: AstrMessageEvent, resp):
-        """拦截 LLM 响应，清理 Gemini 原始格式"""
+        """拦截 LLM 响应，清理 Gemini 原始格式（兜底）"""
         if not self.enabled:
             return
 
