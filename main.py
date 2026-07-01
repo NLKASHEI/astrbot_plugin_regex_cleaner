@@ -122,20 +122,19 @@ class RegexCleaner(Star):
         parts = _GEMINI_RAW_RE.findall(raw)
         return ''.join(p.strip() for p in parts if p.strip())
 
-    @filter.command("清理状态")
+    @filter.command("qingli")
     async def cmd_status(self, event: AstrMessageEvent):
-        """查看正则清理插件状态"""
+        """查看正则清理插件状态 /qingli"""
         status = "已启用" if self.enabled else "已禁用"
         yield event.plain_result(
-            f"🧹 正则清理插件 v1.2\n"
+            f"🧹 正则清理插件 v1.3\n"
             f"状态: {status}\n"
             f"累计清理: {self.clean_count} 次\n"
-            f"匹配格式: [{{text=..., type=text}}]"
         )
 
-    @filter.command("清理开关")
+    @filter.command("qingli_toggle")
     async def cmd_toggle(self, event: AstrMessageEvent):
-        """开关正则清理功能"""
+        """开关正则清理功能 /qingli_toggle"""
         self.enabled = not self.enabled
         status = "已启用" if self.enabled else "已禁用"
         yield event.plain_result(f"🧹 正则清理: {status}")
