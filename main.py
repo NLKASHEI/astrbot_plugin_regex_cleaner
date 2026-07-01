@@ -16,9 +16,15 @@ from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star
 from astrbot.api import logger
 
-# 匹配 Gemini 泄露的 {text=..., type=text} 片段
+# 匹配完整的 {text=..., type=text} 片段
 _GEMINI_RAW_RE = re.compile(
     r'\{text=([^}]*?),\s*type=text\}',
+    re.DOTALL,
+)
+
+# 匹配不完整的 [{text=...（没有闭合标签，被截断）
+_GEMINI_HALF_RE = re.compile(
+    r'^\[\s*\{text=(.+)$',
     re.DOTALL,
 )
 
@@ -65,10 +71,27 @@ class RegexCleaner(Star):
             return
 
         # 检查是否包含需要清理的格式
-        if '{text=' not in text or 'type=text' not in text:
+        has_full = '{text=' in text and 'type=text' in text
+        has_half = text.strip().startswith('[{text=') and 'type=text' not in text
+
+        if not has_full and not has_half:
             return
 
-        # 如果整个响应就是一个 [{text=..., type=text}] 块
+        # 处理不完整的 [{text=... 开头（被截断，没有闭合）
+        if has_half:
+            match = _GEMINI_HALF_RE.match(text.strip())
+            if match:
+                cleaned = match.group(1).strip()
+                if cleaned:
+                    self.clean_count += 1
+                    logger.info(
+                        f"[RegexCleaner] 第 {self.clean_count} 次清理半截格式: "
+                        f"\"{text[:80]}...\" -> \"{cleaned[:80]}...\""
+                    )
+                    resp.completion_text = cleaned
+                    return
+
+        # 处理完整的 [{text=..., type=text}] 块
         if _FULL_BLOCK_RE.fullmatch(text.strip()):
             parts = _GEMINI_RAW_RE.findall(text)
             if parts:
