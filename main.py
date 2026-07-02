@@ -33,7 +33,7 @@ _FULL_BLOCK_RE = re.compile(
 
 # 处理嵌套 [{text=[{text=... 格式（v1.4 新增）
 def _strip_nested_text(text: str) -> str:
-    """剥离嵌套 [{text=[{text=... 前缀和尾部 ] 后缀"""
+    """剥离嵌套 [{text=[{text=... 前缀和尾部残留"""
     prefix = '[{text='
     count = 0
     while text.startswith(prefix):
@@ -43,7 +43,11 @@ def _strip_nested_text(text: str) -> str:
     for _ in range(count):
         if text.endswith(']'):
             text = text[:-1].rstrip()
-    return text.strip()
+    # 清理尾部残留的 , type=text}, ], 等
+    text = re.sub(r',?\s*type=text\}', '', text)
+    text = re.sub(r',?\s*\{type=text\}\s*', '', text)
+    text = text.rstrip(']').strip()
+    return text
 
 
 # system_prompt 注入的格式禁止指令
