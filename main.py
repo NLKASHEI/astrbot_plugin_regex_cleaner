@@ -15,7 +15,7 @@ from astrbot.api import logger
 
 # 匹配完整的 {text=..., type=text} 片段
 _GEMINI_RAW_RE = re.compile(
-    r'\{text=([^}]*?),\s*type=text\}',
+    r'\{text=([^}]*?)\}',
     re.DOTALL,
 )
 
@@ -27,7 +27,7 @@ _GEMINI_HALF_RE = re.compile(
 
 # 整体匹配 [{...}, ...] 包裹体
 _FULL_BLOCK_RE = re.compile(
-    r'\[\s*\{text=.*?type=text\}\s*(?:,\s*\{text=.*?type=text\}\s*)*\]',
+    r'\[\s*\{text=[^}]*\}(?:\s*,\s*\{[^}]*\})*\s*\]',
     re.DOTALL,
 )
 
