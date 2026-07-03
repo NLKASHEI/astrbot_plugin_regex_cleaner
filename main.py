@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-astrbot_plugin_regex_cleaner - 正则清理 LLM 输出中的异常格式 v1.5
+astrbot_plugin_regex_cleaner - 正则清理 LLM 输出中的异常格式 v1.6
 
 处理 Gemini 输出泄露：
 1. [{text=..., type=text}] 标准格式
 2. [{text=... 半截格式
 3. [{text=[{text=[{text=... 嵌套格式
-4. AI 套话清洗（消除"而/突然/一丝/不容置疑/一抹弧度"等AI写作套路）v1.5 新增
+4. AI 套话清洗（消除"而/突然/一丝/不容置疑/一抹弧度"等AI写作套路）
+5. 破折号替换为逗号（——/—/– → ，）v1.6 新增
 """
 
 import re
@@ -174,6 +175,12 @@ class RegexCleaner(Star):
                 self.yuliao_count += 1
                 resp.completion_text = cleaned
 
+        # 破折号替换为逗号（v1.6 新增）——消除 AI 爱用——破折号的毛病
+        _dash_count = resp.completion_text.count('\u2014') + resp.completion_text.count('\u2013') + resp.completion_text.count('\u2015')
+        if _dash_count > 0:
+            resp.completion_text = re.sub(r'[\u2014\u2013\u2015]{1,3}', '，', resp.completion_text)
+            self.yuliao_count += 1
+
     def _extract_text(self, raw: str) -> str:
         """从 [{text=A, type=text}, ...] 中提取纯文本"""
         parts = _GEMINI_RAW_RE.findall(raw)
@@ -185,7 +192,7 @@ class RegexCleaner(Star):
         status = "已启用" if self.enabled else "已禁用"
         yuliao_status = "已启用" if self.yuliao_enabled else "已禁用"
         yield event.plain_result(
-            f"🧹 正则清理插件 v1.5\n"
+            f"🧹 正则清理插件 v1.6\n"
             f"格式清理: {status} | 累计 {self.clean_count} 次\n"
             f"AI 套话清洗: {yuliao_status} | 累计 {self.yuliao_count} 次\n"
         )
