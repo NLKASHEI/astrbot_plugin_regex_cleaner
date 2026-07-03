@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-astrbot_plugin_regex_cleaner - 正则清理 LLM 输出中的异常格式 v1.4
+astrbot_plugin_regex_cleaner - 正则清理 LLM 输出中的异常格式 v1.5
 
 处理 Gemini 输出泄露：
 1. [{text=..., type=text}] 标准格式
 2. [{text=... 半截格式
-3. [{text=[{text=[{text=... 嵌套格式（v1.4 新增）
+3. [{text=[{text=[{text=... 嵌套格式
+4. AI 语料清洗（酒馆级 cliché 消除）v1.5 新增
 """
 
 import re
@@ -50,6 +51,23 @@ def _strip_nested_text(text: str) -> str:
     return text
 
 
+# AI 语料清洗（酒馆级 cliché 消除）v1.5
+_AI_CLICHE_RE = re.compile(
+    r'而(?=是)'
+    r'|(?<=[，"。\s])不是[\S]*?[，, 。]'
+    r'|(个动作|个反应|个认知|个笑容)'
+    r'|突然|忽然'
+    r'|一(丝+)'
+    r'|(、?)不容置疑([的地]?)'
+    r'|(、?)(不易|难以)(觉察|察觉)([的地]?)'
+    r'|(微|几)不可(查|察|闻)([的地]?)'
+    r'|[，,]([^，,]*?)指(关节|节|尖)(.*?)白([^，,]*?)(?=[。，,])'
+    r'|(?<=[\s"。])([^，\"\u201d]*?)(一抹|弧度)([^，]*?)[。，]'
+    r'|[，,]([^，,\"\u201d]*?)(一抹|弧度)([^，]*?)(?=[。，,])'
+    r'|(?<=[\s"。，])([^。，]*?)(话像)([^。，]*?)[。，]',
+    re.DOTALL,
+)
+
 # system_prompt 注入的格式禁止指令
 _FORMAT_BAN_PROMPT = (
     "\n[重要规则] 你的回复必须是纯自然语言文本，"
@@ -62,7 +80,9 @@ class RegexCleaner(Star):
     def __init__(self, context: Context):
         super().__init__(context)
         self.enabled = True
+        self.cliche_enabled = True
         self.clean_count = 0
+        self.cliche_count = 0
 
     # ==================== 源头预防 ====================
 
@@ -146,6 +166,13 @@ class RegexCleaner(Star):
             )
             resp.completion_text = cleaned
 
+        # AI 语料清洗（v1.5 新增）
+        if self.cliche_enabled:
+            cleaned = _AI_CLICHE_RE.sub('', resp.completion_text)
+            if cleaned != resp.completion_text:
+                self.cliche_count += 1
+                resp.completion_text = cleaned
+
     def _extract_text(self, raw: str) -> str:
         """从 [{text=A, type=text}, ...] 中提取纯文本"""
         parts = _GEMINI_RAW_RE.findall(raw)
@@ -155,18 +182,26 @@ class RegexCleaner(Star):
     async def cmd_status(self, event: AstrMessageEvent):
         """查看正则清理插件状态 /qingli"""
         status = "已启用" if self.enabled else "已禁用"
+        cliche_status = "已启用" if self.cliche_enabled else "已禁用"
         yield event.plain_result(
-            f"🧹 正则清理插件 v1.3\n"
-            f"状态: {status}\n"
-            f"累计清理: {self.clean_count} 次\n"
+            f"🧹 正则清理插件 v1.5\n"
+            f"Gemini 格式清理: {status} | 累计 {self.clean_count} 次\n"
+            f"AI 语料清洗: {cliche_status} | 累计 {self.cliche_count} 次\n"
         )
 
     @filter.command("qingli_toggle")
     async def cmd_toggle(self, event: AstrMessageEvent):
-        """开关正则清理功能 /qingli_toggle"""
+        """开关 Gemini 格式清理 /qingli_toggle"""
         self.enabled = not self.enabled
         status = "已启用" if self.enabled else "已禁用"
-        yield event.plain_result(f"🧹 正则清理: {status}")
+        yield event.plain_result(f"🧹 Gemini 格式清理: {status}")
+
+    @filter.command("qingli_cliche")
+    async def cmd_cliche_toggle(self, event: AstrMessageEvent):
+        """开关 AI 语料清洗 /qingli_cliche"""
+        self.cliche_enabled = not self.cliche_enabled
+        status = "已启用" if self.cliche_enabled else "已禁用"
+        yield event.plain_result(f"🧹 AI 语料清洗: {status}")
 
     async def terminate(self):
         """插件卸载时调用"""
