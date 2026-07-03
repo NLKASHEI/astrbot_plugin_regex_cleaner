@@ -12,7 +12,7 @@ astrbot_plugin_regex_cleaner - 正则清理 LLM 输出中的异常格式 v1.5
 import re
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star
-from astrbot.api import logger
+from astrbot.api import logger, AstrBotConfig
 
 # 匹配完整的 {text=..., type=text} 片段
 _GEMINI_RAW_RE = re.compile(
@@ -77,10 +77,11 @@ _FORMAT_BAN_PROMPT = (
 
 
 class RegexCleaner(Star):
-    def __init__(self, context: Context):
+    def __init__(self, context: Context, config: AstrBotConfig = None):
         super().__init__(context)
         self.enabled = True
-        self.cliche_enabled = True
+        cfg = config or {}
+        self.cliche_enabled = str(cfg.get("cliche_enabled", "true")).lower() in ("true", "1", "yes")
         self.clean_count = 0
         self.cliche_count = 0
 
