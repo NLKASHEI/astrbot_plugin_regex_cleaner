@@ -1,0 +1,8 @@
+{
+  "yuliao_enabled": {
+    "description": "启用 AI 套话清洗",
+    "type": "text",
+    "default": "true",
+    "hint": "是否启用 AI 套话清洗（而/突然/一丝/不容置疑/一抹弧度/话像等）。填 true 或 false"
+  }
+}

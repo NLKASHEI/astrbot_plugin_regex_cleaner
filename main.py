@@ -6,7 +6,7 @@ astrbot_plugin_regex_cleaner - 正则清理 LLM 输出中的异常格式 v1.5
 1. [{text=..., type=text}] 标准格式
 2. [{text=... 半截格式
 3. [{text=[{text=[{text=... 嵌套格式
-4. AI 语料清洗（酒馆级 cliché 消除）v1.5 新增
+4. AI 套话清洗（消除"而/突然/一丝/不容置疑/一抹弧度"等AI写作套路）v1.5 新增
 """
 
 import re
@@ -51,8 +51,8 @@ def _strip_nested_text(text: str) -> str:
     return text
 
 
-# AI 语料清洗（酒馆级 cliché 消除）v1.5
-_AI_CLICHE_RE = re.compile(
+# AI 套话清洗（消除常见 AI 写作套路）v1.5
+_AI_TAOHUA_RE = re.compile(
     r'而(?=是)'
     r'|(?<=[，"。\s])不是[\S]*?[，, 。]'
     r'|(个动作|个反应|个认知|个笑容)'
@@ -81,9 +81,9 @@ class RegexCleaner(Star):
         super().__init__(context)
         self.enabled = True
         cfg = config or {}
-        self.cliche_enabled = str(cfg.get("cliche_enabled", "true")).lower() in ("true", "1", "yes")
+        self.yuliao_enabled = str(cfg.get("yuliao_enabled", "true")).lower() in ("true", "1", "yes")
         self.clean_count = 0
-        self.cliche_count = 0
+        self.yuliao_count = 0
 
     # ==================== 源头预防 ====================
 
@@ -167,11 +167,11 @@ class RegexCleaner(Star):
             )
             resp.completion_text = cleaned
 
-        # AI 语料清洗（v1.5 新增）
-        if self.cliche_enabled:
-            cleaned = _AI_CLICHE_RE.sub('', resp.completion_text)
+        # AI 套话清洗（v1.5 新增）
+        if self.yuliao_enabled:
+            cleaned = _AI_TAOHUA_RE.sub('', resp.completion_text)
             if cleaned != resp.completion_text:
-                self.cliche_count += 1
+                self.yuliao_count += 1
                 resp.completion_text = cleaned
 
     def _extract_text(self, raw: str) -> str:
@@ -183,26 +183,26 @@ class RegexCleaner(Star):
     async def cmd_status(self, event: AstrMessageEvent):
         """查看正则清理插件状态 /qingli"""
         status = "已启用" if self.enabled else "已禁用"
-        cliche_status = "已启用" if self.cliche_enabled else "已禁用"
+        yuliao_status = "已启用" if self.yuliao_enabled else "已禁用"
         yield event.plain_result(
             f"🧹 正则清理插件 v1.5\n"
-            f"Gemini 格式清理: {status} | 累计 {self.clean_count} 次\n"
-            f"AI 语料清洗: {cliche_status} | 累计 {self.cliche_count} 次\n"
+            f"格式清理: {status} | 累计 {self.clean_count} 次\n"
+            f"AI 套话清洗: {yuliao_status} | 累计 {self.yuliao_count} 次\n"
         )
 
     @filter.command("qingli_toggle")
     async def cmd_toggle(self, event: AstrMessageEvent):
-        """开关 Gemini 格式清理 /qingli_toggle"""
+        """开关格式清理 /qingli_toggle"""
         self.enabled = not self.enabled
         status = "已启用" if self.enabled else "已禁用"
-        yield event.plain_result(f"🧹 Gemini 格式清理: {status}")
+        yield event.plain_result(f"🧹 格式清理: {status}")
 
-    @filter.command("qingli_cliche")
-    async def cmd_cliche_toggle(self, event: AstrMessageEvent):
-        """开关 AI 语料清洗 /qingli_cliche"""
-        self.cliche_enabled = not self.cliche_enabled
-        status = "已启用" if self.cliche_enabled else "已禁用"
-        yield event.plain_result(f"🧹 AI 语料清洗: {status}")
+    @filter.command("qingli_yuliao")
+    async def cmd_yuliao_toggle(self, event: AstrMessageEvent):
+        """开关 AI 套话清洗 /qingli_yuliao"""
+        self.yuliao_enabled = not self.yuliao_enabled
+        status = "已启用" if self.yuliao_enabled else "已禁用"
+        yield event.plain_result(f"🧹 AI 套话清洗: {status}")
 
     async def terminate(self):
         """插件卸载时调用"""
