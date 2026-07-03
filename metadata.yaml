@@ -1,5 +1,5 @@
 name: astrbot_plugin_regex_cleaner
-desc: 正则清理LLM输出异常格式，如Gemini泄露的[{text=xxx, type=text}]原始tool call格式。
+desc: 正则清理LLM输出异常格式+AI套话清洗+破折号替换 v1.6 — Gemini格式清理/嵌套格式/AI写作套路/破折号→逗号
 author: NLKASHEI
-version: 1.5.0
+version: 1.6.0
 repo: https://github.com/NLKASHEI/astrbot_plugin_regex_cleaner
