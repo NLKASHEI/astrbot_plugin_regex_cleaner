@@ -155,19 +155,20 @@ class RegexCleaner(Star):
                         f"\"{text[:80]}...\" -> \"{cleaned[:80]}...\""
                     )
                     resp.completion_text = cleaned
-                    return
+                    # 不 return，继续走下方 AI 套话/破折号/type=text 清洗
 
         # 文本中嵌入了 [{text=..., type=text}] 片段
-        cleaned = _FULL_BLOCK_RE.sub(
-            lambda m: self._extract_text(m.group(0)),
-            text,
-        )
-        if cleaned != text:
-            self.clean_count += 1
-            logger.info(
-                f"[RegexCleaner] 第 {self.clean_count} 次清理嵌入格式"
+        if 'type=text' in resp.completion_text or '{text=' in resp.completion_text:
+            cleaned = _FULL_BLOCK_RE.sub(
+                lambda m: self._extract_text(m.group(0)),
+                resp.completion_text,
             )
-            resp.completion_text = cleaned
+            if cleaned != resp.completion_text:
+                self.clean_count += 1
+                logger.info(
+                    f"[RegexCleaner] 第 {self.clean_count} 次清理嵌入格式"
+                )
+                resp.completion_text = cleaned
 
         # AI 套话清洗（v1.5 新增）
         if self.yuliao_enabled:
