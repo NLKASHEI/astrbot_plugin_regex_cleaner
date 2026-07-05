@@ -1,57 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-astrbot_plugin_regex_cleaner - 正则清理 LLM 输出中的异常格式 v1.7
+astrbot_plugin_regex_cleaner - 清理 LLM 输出异常格式 v1.8
 
-处理 Gemini 输出泄露：
-1. [{text=..., type=text}] 标准格式
-2. [{text=... 半截格式
-3. [{text=[{text=[{text=... 嵌套格式
-4. AI 套话清洗（消除"而/突然/一丝/不容置疑/一抹弧度"等AI写作套路）
-5. 破折号替换为逗号（——/—/– → ，）
-6. 定点清除残留的 , type=text 分隔符 v1.7 新增
+统一 str.replace 暴力清洗所有 Gemini 格式残留（[{text= / , type=text / 嵌套等），不再用复杂正则。
+外加 AI 套话清洗、破折号替换。
 """
 
 import re
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star
 from astrbot.api import logger, AstrBotConfig
-
-# 匹配完整的 {text=..., type=text} 片段
-_GEMINI_RAW_RE = re.compile(
-    r'\{text=([^}]*?)\}',
-    re.DOTALL,
-)
-
-# 匹配不完整的 [{text=...（没有闭合标签，被截断）
-_GEMINI_HALF_RE = re.compile(
-    r'^\[\s*\{text=(.+)$',
-    re.DOTALL,
-)
-
-# 整体匹配 [{...}, ...] 包裹体
-_FULL_BLOCK_RE = re.compile(
-    r'\[\s*\{text=[^}]*\}(?:\s*,\s*\{[^}]*\})*\s*\]',
-    re.DOTALL,
-)
-
-# 处理嵌套 [{text=[{text=... 格式（v1.4 新增）
-def _strip_nested_text(text: str) -> str:
-    """剥离嵌套 [{text=[{text=... 前缀和尾部残留"""
-    prefix = '[{text='
-    count = 0
-    while text.startswith(prefix):
-        count += 1
-        text = text[len(prefix):]
-    text = text.rstrip()
-    for _ in range(count):
-        if text.endswith(']'):
-            text = text[:-1].rstrip()
-    # 清理尾部残留的 , type=text}, ], 等
-    text = re.sub(r',?\s*type=text\}', '', text)
-    text = re.sub(r',?\s*\{type=text\}\s*', '', text)
-    text = text.rstrip(']').strip()
-    return text
-
 
 # AI 套话清洗（消除常见 AI 写作套路）v1.5
 _AI_TAOHUA_RE = re.compile(
@@ -109,66 +67,34 @@ class RegexCleaner(Star):
         if not text:
             return
 
-        # 检查是否包含需要清理的格式
-        has_full = '{text=' in text and 'type=text' in text
-        has_half = text.strip().startswith('[{text=') and 'type=text' not in text
-        has_nested = text.strip().startswith('[{text=[{text=')
-
-        if not has_full and not has_half and not has_nested:
+        # 快速检查是否有 Gemini 垃圾
+        has_gemini = '{text=' in text or 'type=text' in text or text.startswith('[{text=')
+        if not has_gemini:
             return
 
-        # 处理嵌套 [{text=[{text=... 格式（v1.4 新增）
-        if has_nested:
-            cleaned = _strip_nested_text(text.strip())
-            if cleaned and cleaned != text.strip():
-                self.clean_count += 1
-                logger.info(
-                    f"[RegexCleaner] 第 {self.clean_count} 次清理嵌套格式: "
-                    f"\"{text[:60]}...\" -> \"{cleaned[:60]}...\""
-                )
-                resp.completion_text = cleaned
-                return
+        old = text
+        # 统一用 str.replace 暴力清洗，不搞复杂正则
+        text = text.replace('[{text=[{text=', '')
+        text = text.replace('[{text=', '')
+        text = text.replace(', type=text}]', '')
+        text = text.replace(', type=text}', '')
+        text = text.replace(', type=text', '')
+        text = text.replace(',type=text', '')
+        text = text.replace(', type = text', '')
+        text = text.replace('{type=text}', '')
+        text = text.replace('{type=text', '')
+        text = text.replace('}]', '')
+        # 再扫一遍，确保干净
+        if 'type=text' in text:
+            text = text.replace(', type=text', '').replace(',type=text', '')
 
-        # 处理不完整的 [{text=... 开头（被截断，没有闭合）
-        if has_half:
-            match = _GEMINI_HALF_RE.match(text.strip())
-            if match:
-                cleaned = match.group(1).strip()
-                if cleaned:
-                    self.clean_count += 1
-                    logger.info(
-                        f"[RegexCleaner] 第 {self.clean_count} 次清理半截格式: "
-                        f"\"{text[:80]}...\" -> \"{cleaned[:80]}...\""
-                    )
-                    resp.completion_text = cleaned
-                    return
-
-        # 处理完整的 [{text=..., type=text}] 块
-        if _FULL_BLOCK_RE.fullmatch(text.strip()):
-            parts = _GEMINI_RAW_RE.findall(text)
-            if parts:
-                cleaned = ''.join(p.strip() for p in parts if p.strip())
-                if cleaned:
-                    self.clean_count += 1
-                    logger.info(
-                        f"[RegexCleaner] 第 {self.clean_count} 次清理: "
-                        f"\"{text[:80]}...\" -> \"{cleaned[:80]}...\""
-                    )
-                    resp.completion_text = cleaned
-                    # 不 return，继续走下方 AI 套话/破折号/type=text 清洗
-
-        # 文本中嵌入了 [{text=..., type=text}] 片段
-        if 'type=text' in resp.completion_text or '{text=' in resp.completion_text:
-            cleaned = _FULL_BLOCK_RE.sub(
-                lambda m: self._extract_text(m.group(0)),
-                resp.completion_text,
+        if text != old:
+            self.clean_count += 1
+            logger.info(
+                f"[RegexCleaner] 第 {self.clean_count} 次清理 Gemini 格式: "
+                f"\"{old[:60]}...\" -> \"{text[:60]}...\""
             )
-            if cleaned != resp.completion_text:
-                self.clean_count += 1
-                logger.info(
-                    f"[RegexCleaner] 第 {self.clean_count} 次清理嵌入格式"
-                )
-                resp.completion_text = cleaned
+            resp.completion_text = text.strip()
 
         # AI 套话清洗（v1.5 新增）
         if self.yuliao_enabled:
@@ -177,27 +103,11 @@ class RegexCleaner(Star):
                 self.yuliao_count += 1
                 resp.completion_text = cleaned
 
-        # 破折号替换为逗号（v1.6 新增）——消除 AI 爱用——破折号的毛病
+        # 破折号替换为逗号（v1.6 新增）
         _dash_count = resp.completion_text.count('\u2014') + resp.completion_text.count('\u2013') + resp.completion_text.count('\u2015')
         if _dash_count > 0:
             resp.completion_text = re.sub(r'[\u2014\u2013\u2015]{1,3}', '，', resp.completion_text)
             self.yuliao_count += 1
-
-        # 定点清除残留的 , type=text（v1.7 新增）
-        # 循环清洗直到干净——GEMINI_RAW_RE 提取后 , type=text 可能混入内容
-        _loop = 0
-        while 'type=text' in resp.completion_text and _loop < 10:
-            _loop += 1
-            resp.completion_text = re.sub(r',\s*type\s*=\s*text', '', resp.completion_text)
-            for variant in (', type=text', ',type=text', ', type = text'):
-                resp.completion_text = resp.completion_text.replace(variant, '')
-        if _loop > 0:
-            self.yuliao_count += 1
-
-    def _extract_text(self, raw: str) -> str:
-        """从 [{text=A, type=text}, ...] 中提取纯文本"""
-        parts = _GEMINI_RAW_RE.findall(raw)
-        return ''.join(p.strip() for p in parts if p.strip())
 
     @filter.command("qingli")
     async def cmd_status(self, event: AstrMessageEvent):
@@ -205,7 +115,7 @@ class RegexCleaner(Star):
         status = "已启用" if self.enabled else "已禁用"
         yuliao_status = "已启用" if self.yuliao_enabled else "已禁用"
         yield event.plain_result(
-            f"🧹 正则清理插件 v1.7\n"
+            f"🧹 正则清理插件 v1.8\n"
             f"格式清理: {status} | 累计 {self.clean_count} 次\n"
             f"AI 套话清洗: {yuliao_status} | 累计 {self.yuliao_count} 次\n"
         )
