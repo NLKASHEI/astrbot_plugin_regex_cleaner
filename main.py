@@ -183,9 +183,12 @@ class RegexCleaner(Star):
             self.yuliao_count += 1
 
         # 定点清除残留的 , type=text（v1.7 新增）
-        # 匹配 , type=text / ,type=text / , type = text 等变体
         if 'type=text' in resp.completion_text:
+            # 正则清除各种变体
             cleaned = re.sub(r',\s*type\s*=\s*text', '', resp.completion_text)
+            # 兜底：精确字符串替换，防止正则漏网
+            for variant in (', type=text', ',type=text', ', type = text'):
+                cleaned = cleaned.replace(variant, '')
             if cleaned != resp.completion_text:
                 resp.completion_text = cleaned
                 self.yuliao_count += 1
