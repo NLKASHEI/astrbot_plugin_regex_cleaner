@@ -183,15 +183,15 @@ class RegexCleaner(Star):
             self.yuliao_count += 1
 
         # 定点清除残留的 , type=text（v1.7 新增）
-        if 'type=text' in resp.completion_text:
-            # 正则清除各种变体
-            cleaned = re.sub(r',\s*type\s*=\s*text', '', resp.completion_text)
-            # 兜底：精确字符串替换，防止正则漏网
+        # 循环清洗直到干净——GEMINI_RAW_RE 提取后 , type=text 可能混入内容
+        _loop = 0
+        while 'type=text' in resp.completion_text and _loop < 10:
+            _loop += 1
+            resp.completion_text = re.sub(r',\s*type\s*=\s*text', '', resp.completion_text)
             for variant in (', type=text', ',type=text', ', type = text'):
-                cleaned = cleaned.replace(variant, '')
-            if cleaned != resp.completion_text:
-                resp.completion_text = cleaned
-                self.yuliao_count += 1
+                resp.completion_text = resp.completion_text.replace(variant, '')
+        if _loop > 0:
+            self.yuliao_count += 1
 
     def _extract_text(self, raw: str) -> str:
         """从 [{text=A, type=text}, ...] 中提取纯文本"""
