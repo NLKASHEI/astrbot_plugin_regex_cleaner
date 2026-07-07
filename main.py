@@ -76,6 +76,8 @@ class RegexCleaner(Star):
         # 统一用 str.replace 暴力清洗，不搞复杂正则
         text = text.replace('[{text=[{text=', '')
         text = text.replace('[{text=', '')
+        text = text.replace(', {text=', '')      # v1.9: 逗号分隔的嵌入 {text=
+        text = text.replace('{text=', '')        # 兜底：孤立的 {text=
         text = text.replace(', type=text}]', '')
         text = text.replace(', type=text}', '')
         text = text.replace(', type=text', '')
@@ -85,8 +87,8 @@ class RegexCleaner(Star):
         text = text.replace('{type=text', '')
         text = text.replace('}]', '')
         # 再扫一遍，确保干净
-        if 'type=text' in text:
-            text = text.replace(', type=text', '').replace(',type=text', '')
+        if 'type=text' in text or '{text=' in text:
+            text = text.replace(', type=text', '').replace(',type=text', '').replace(', {text=', '').replace('{text=', '')
 
         if text != old:
             self.clean_count += 1
