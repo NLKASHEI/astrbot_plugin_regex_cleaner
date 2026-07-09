@@ -1,5 +1,5 @@
 name: astrbot_plugin_regex_cleaner
 desc: v1.9 暴力清洗 Gemini 所有格式残留(含 ,{text=)+AI套话清洗+破折号替换
 author: NLKASHEI
-version: 1.9.0
+version: 1.9.1
 repo: https://github.com/NLKASHEI/astrbot_plugin_regex_cleaner

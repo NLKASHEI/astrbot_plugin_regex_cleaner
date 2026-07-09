@@ -86,6 +86,7 @@ class RegexCleaner(Star):
         text = text.replace('{type=text}', '')
         text = text.replace('{type=text', '')
         text = text.replace('}]', '')
+        text = text.replace('@everyone', '已禁止艾特所有人')  # 防止 Bot 误 @所有人
         # 再扫一遍，确保干净
         if 'type=text' in text or '{text=' in text:
             text = text.replace(', type=text', '').replace(',type=text', '').replace(', {text=', '').replace('{text=', '')
