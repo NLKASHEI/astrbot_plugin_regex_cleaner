@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-astrbot_plugin_regex_cleaner - 清理 LLM 输出异常格式 v1.9
+astrbot_plugin_regex_cleaner - 清理 LLM 输出异常格式 v1.9.1
 
 统一 str.replace 暴力清洗所有 Gemini 格式残留（[{text= / , type=text / 嵌套等），不再用复杂正则。
 外加 AI 套话清洗、破折号替换。
@@ -122,7 +122,7 @@ class RegexCleaner(Star):
         status = "已启用" if self.enabled else "已禁用"
         yuliao_status = "已启用" if self.yuliao_enabled else "已禁用"
         yield event.plain_result(
-            f"🧹 正则清理插件 v1.9\n"
+            f"🧹 正则清理插件 v1.9.1\n"
             f"格式清理: {status} | 累计 {self.clean_count} 次\n"
             f"AI 套话清洗: {yuliao_status} | 累计 {self.yuliao_count} 次\n"
         )
