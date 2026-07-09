@@ -67,6 +67,11 @@ class RegexCleaner(Star):
         if not text:
             return
 
+        # 最高优先级：防止 Bot 误 @everyone / @here
+        if '@everyone' in text:
+            text = text.replace('@everyone', '[禁止艾特所有人]')
+            resp.completion_text = text
+
         # 快速检查是否有 Gemini 垃圾
         has_gemini = '{text=' in text or 'type=text' in text or text.startswith('[{text=')
         if not has_gemini:
@@ -86,7 +91,6 @@ class RegexCleaner(Star):
         text = text.replace('{type=text}', '')
         text = text.replace('{type=text', '')
         text = text.replace('}]', '')
-        text = text.replace('@everyone', '已禁止艾特所有人')  # 防止 Bot 误 @所有人
         # 再扫一遍，确保干净
         if 'type=text' in text or '{text=' in text:
             text = text.replace(', type=text', '').replace(',type=text', '').replace(', {text=', '').replace('{text=', '')
