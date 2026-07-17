@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-astrbot_plugin_regex_cleaner - 清理 LLM 输出异常格式 v1.10.0
+astrbot_plugin_regex_cleaner - 清理 LLM 输出异常格式 v1.11.0
 
 用正则精确匹配 Gemini [{text=..., type=text}] 格式及其所有变体（含换行/空格），
-外加 AI 套话清洗、破折号替换。
+外加 AI 套话清洗（修复过于激进的突然/忽然匹配）、破折号替换。
 """
 
 import re
@@ -12,21 +12,20 @@ from astrbot.api.star import Context, Star
 from astrbot.api import logger, AstrBotConfig
 
 # Gemini [{text=CONTENT, type=text}] 格式清理（v1.10 重写：正则替代 str.replace）
-# 匹配从 [{text= 到 , type=text}] 的完整块，中间内容（含换行）提取为纯文本
 _GEMINI_FORMAT_RE = re.compile(
-    r'\[\{text\s*=\s*'       # [{text= 开头
-    r'(.*?)'                   # 正文（非贪婪，跨行）
-    r'\s*,\s*type\s*=\s*text\s*'  # , type=text
-    r'\}\]',                   # }] 结尾
+    r'\[\{text\s*=\s*'
+    r'(.*?)'
+    r'\s*,\s*type\s*=\s*text\s*'
+    r'\}\]',
     re.DOTALL,
 )
 
-# AI 套话清洗（消除常见 AI 写作套路）v1.5
+# AI 套话清洗（v1.11: 突然/忽然改为句首+逗号限定，避免误伤正常句子）
 _AI_TAOHUA_RE = re.compile(
     r'而(?=是)'
     r'|(?<=[，"。\s])不是[\S]*?[，, 。]'
     r'|(个动作|个反应|个认知|个笑容)'
-    r'|突然|忽然'
+    r'|(?<=[。！？\n])(突然|忽然)，'
     r'|一(丝+)'
     r'|(、?)不容置疑([的地]?)'
     r'|(、?)(不易|难以)(觉察|察觉)([的地]?)'
@@ -53,7 +52,8 @@ class RegexCleaner(Star):
         cfg = config or {}
         self.yuliao_enabled = str(cfg.get("yuliao_enabled", "true")).lower() in ("true", "1", "yes")
         self.clean_count = 0
-        self.yuliao_count = 0
+        self.taohua_count = 0
+        self.dash_count = 0
 
     # ==================== 源头预防 ====================
 
@@ -82,39 +82,34 @@ class RegexCleaner(Star):
             text = text.replace('@everyone', '[禁止艾特所有人]')
             resp.completion_text = text
 
-        # 快速检查是否有 Gemini 格式
+        # Gemini 格式清理
         has_gemini = '{text=' in text or 'type=text' in text
-        if not has_gemini:
-            return
-
-        old = text
-        # v1.10: 正则精确匹配 [{text=..., type=text}] 及其所有变体（含换行/空格）
-        text = _GEMINI_FORMAT_RE.sub(r'\1', text)
-        # 兜底：残留的孤立标签
-        text = text.replace('[{text=', '').replace('{text=', '')
-        text = text.replace(', type=text}]', '').replace(', type=text}', '')
-        text = text.replace('}]', '')
-
-        if text != old:
-            self.clean_count += 1
-            logger.info(
-                f"[RegexCleaner] 第 {self.clean_count} 次清理 Gemini 格式: "
-                f"\"{old[:60]}...\" -> \"{text[:60]}...\""
-            )
+        if has_gemini:
+            old = text
+            text = _GEMINI_FORMAT_RE.sub(r'\1', text)
+            # 兜底：残留的孤立标签
+            text = text.replace('[{text=', '').replace('{text=', '')
+            text = text.replace(', type=text}]', '').replace(', type=text}', '')
+            text = text.replace('}]', '')
+            if text != old:
+                self.clean_count += 1
+                logger.info(
+                    f"[RegexCleaner] 第 {self.clean_count} 次清理 Gemini 格式: "
+                    f"\"{old[:60]}...\" -> \"{text[:60]}...\""
+                )
             resp.completion_text = text.strip()
 
         # AI 套话清洗（v1.5 新增）
         if self.yuliao_enabled:
             cleaned = _AI_TAOHUA_RE.sub('', resp.completion_text)
             if cleaned != resp.completion_text:
-                self.yuliao_count += 1
+                self.taohua_count += 1
                 resp.completion_text = cleaned
 
-        # 破折号替换为逗号（v1.6 新增）
-        _dash_count = resp.completion_text.count('\u2014') + resp.completion_text.count('\u2013') + resp.completion_text.count('\u2015')
-        if _dash_count > 0:
+        # 破折号替换为逗号
+        if re.search(r'[\u2014\u2013\u2015]', resp.completion_text):
             resp.completion_text = re.sub(r'[\u2014\u2013\u2015]+', '，', resp.completion_text)
-            self.yuliao_count += 1
+            self.dash_count += 1
 
     @filter.command("qingli")
     async def cmd_status(self, event: AstrMessageEvent):
@@ -122,9 +117,10 @@ class RegexCleaner(Star):
         status = "已启用" if self.enabled else "已禁用"
         yuliao_status = "已启用" if self.yuliao_enabled else "已禁用"
         yield event.plain_result(
-            f"🧹 正则清理插件 v1.10.0\n"
+            f"🧹 正则清理插件 v1.11.0\n"
             f"格式清理: {status} | 累计 {self.clean_count} 次\n"
-            f"AI 套话清洗: {yuliao_status} | 累计 {self.yuliao_count} 次\n"
+            f"套话清洗: {yuliao_status} | 累计 {self.taohua_count} 次\n"
+            f"破折号替换: 累计 {self.dash_count} 次\n"
         )
 
     @filter.command("qingli_toggle")
@@ -144,5 +140,6 @@ class RegexCleaner(Star):
     async def terminate(self):
         """插件卸载时调用"""
         logger.info(
-            f"[RegexCleaner] 插件已卸载，共清理 {self.clean_count} 次"
+            f"[RegexCleaner] 插件已卸载，"
+            f"格式清理 {self.clean_count} 次，套话 {self.taohua_count} 次，破折号 {self.dash_count} 次"
         )
