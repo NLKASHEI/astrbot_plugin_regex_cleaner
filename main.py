@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-astrbot_plugin_regex_cleaner - 清理 LLM 输出异常格式 v1.9.1
+astrbot_plugin_regex_cleaner - 清理 LLM 输出异常格式 v1.10.0
 
-统一 str.replace 暴力清洗所有 Gemini 格式残留（[{text= / , type=text / 嵌套等），不再用复杂正则。
+用正则精确匹配 Gemini [{text=..., type=text}] 格式及其所有变体（含换行/空格），
 外加 AI 套话清洗、破折号替换。
 """
 
@@ -10,6 +10,16 @@ import re
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star
 from astrbot.api import logger, AstrBotConfig
+
+# Gemini [{text=CONTENT, type=text}] 格式清理（v1.10 重写：正则替代 str.replace）
+# 匹配从 [{text= 到 , type=text}] 的完整块，中间内容（含换行）提取为纯文本
+_GEMINI_FORMAT_RE = re.compile(
+    r'\[\{text\s*=\s*'       # [{text= 开头
+    r'(.*?)'                   # 正文（非贪婪，跨行）
+    r'\s*,\s*type\s*=\s*text\s*'  # , type=text
+    r'\}\]',                   # }] 结尾
+    re.DOTALL,
+)
 
 # AI 套话清洗（消除常见 AI 写作套路）v1.5
 _AI_TAOHUA_RE = re.compile(
@@ -72,28 +82,18 @@ class RegexCleaner(Star):
             text = text.replace('@everyone', '[禁止艾特所有人]')
             resp.completion_text = text
 
-        # 快速检查是否有 Gemini 垃圾
-        has_gemini = '{text=' in text or 'type=text' in text or text.startswith('[{text=')
+        # 快速检查是否有 Gemini 格式
+        has_gemini = '{text=' in text or 'type=text' in text
         if not has_gemini:
             return
 
         old = text
-        # 统一用 str.replace 暴力清洗，不搞复杂正则
-        text = text.replace('[{text=[{text=', '')
-        text = text.replace('[{text=', '')
-        text = text.replace(', {text=', '')      # v1.9: 逗号分隔的嵌入 {text=
-        text = text.replace('{text=', '')        # 兜底：孤立的 {text=
-        text = text.replace(', type=text}]', '')
-        text = text.replace(', type=text}', '')
-        text = text.replace(', type=text', '')
-        text = text.replace(',type=text', '')
-        text = text.replace(', type = text', '')
-        text = text.replace('{type=text}', '')
-        text = text.replace('{type=text', '')
+        # v1.10: 正则精确匹配 [{text=..., type=text}] 及其所有变体（含换行/空格）
+        text = _GEMINI_FORMAT_RE.sub(r'\1', text)
+        # 兜底：残留的孤立标签
+        text = text.replace('[{text=', '').replace('{text=', '')
+        text = text.replace(', type=text}]', '').replace(', type=text}', '')
         text = text.replace('}]', '')
-        # 再扫一遍，确保干净
-        if 'type=text' in text or '{text=' in text:
-            text = text.replace(', type=text', '').replace(',type=text', '').replace(', {text=', '').replace('{text=', '')
 
         if text != old:
             self.clean_count += 1
@@ -122,7 +122,7 @@ class RegexCleaner(Star):
         status = "已启用" if self.enabled else "已禁用"
         yuliao_status = "已启用" if self.yuliao_enabled else "已禁用"
         yield event.plain_result(
-            f"🧹 正则清理插件 v1.9.1\n"
+            f"🧹 正则清理插件 v1.10.0\n"
             f"格式清理: {status} | 累计 {self.clean_count} 次\n"
             f"AI 套话清洗: {yuliao_status} | 累计 {self.yuliao_count} 次\n"
         )
