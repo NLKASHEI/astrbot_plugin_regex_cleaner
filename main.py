@@ -113,7 +113,7 @@ class RegexCleaner(Star):
         # 破折号替换为逗号（v1.6 新增）
         _dash_count = resp.completion_text.count('\u2014') + resp.completion_text.count('\u2013') + resp.completion_text.count('\u2015')
         if _dash_count > 0:
-            resp.completion_text = re.sub(r'[\u2014\u2013\u2015]{1,3}', '，', resp.completion_text)
+            resp.completion_text = re.sub(r'[\u2014\u2013\u2015]+', '，', resp.completion_text)
             self.yuliao_count += 1
 
     @filter.command("qingli")
